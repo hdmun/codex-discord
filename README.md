@@ -47,6 +47,20 @@ headless 대신 살아있는 codex TUI 세션과 연결된다.
   - TUI 모드에서는 프라이밍에 이 규칙을 알려줘야 한다:
     "파일을 채널에 첨부하려면 답변에 `[[첨부: 워크스페이스 상대경로]]` 한 줄을 넣어라"
 
+## Gemini(Antigravity CLI) 인스턴스 (선택)
+
+같은 코드로 Gemini도 별도 봇으로 병행 운영할 수 있다 (엔진: `agy` — Antigravity CLI):
+
+1. Discord 봇 계정을 하나 더 만들고 (예: "Gemini Bot") 토큰 발급
+2. `.env.gemini.example`을 `.env.gemini`로 복사해 채우기 (`ENGINE=agy`, `DATA_DIR=data-gemini` 유지)
+3. `bash scripts/install.sh` 재실행 → `com.codex-discord.gemini` 데몬이 추가 등록됨 (수동 실행: `npm run start:gemini`)
+
+동작 방식: 첫 턴은 `agy --new-project`로 작업폴더를 워크스페이스로 잡고, 이후 `--conversation <id>`로 채널별 대화를 이어간다.
+도구 실행은 `--sandbox` 안에서 자동 승인된다 (headless는 승인 프롬프트를 띄울 수 없어 필수).
+라이브 TUI 모드는 codex 전용 — agy 인스턴스에서 TUI 변수는 무시된다.
+
+참고: Gemini CLI(공식 `gemini`)는 개인 OAuth 지원이 종료되어(IneligibleTierError) 엔진으로 채택하지 않았다 (2026-07-24 실측).
+
 ## 운영
 
 - **부팅 자동 기동(macOS)**: `.env`를 채운 뒤 `bash scripts/install.sh` 한 번 — 경로 자동 탐지(node·tmux·codex) 후 LaunchAgent 2개를 생성·등록한다 (멱등, 재실행 = 재설치)

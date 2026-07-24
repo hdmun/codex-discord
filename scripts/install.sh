@@ -47,7 +47,8 @@ else
 fi
 
 # ---- plist 생성 ----
-PATH_LINE="$(dirname "$NODE_BIN"):$(dirname "$TMUX_BIN"):$(dirname "$CODEX_BIN"):/usr/bin:/bin"
+# /usr/sbin은 agy(Antigravity CLI)가 내부에서 sysctl을 호출할 때 필요
+PATH_LINE="$(dirname "$NODE_BIN"):$(dirname "$TMUX_BIN"):$(dirname "$CODEX_BIN"):/usr/bin:/bin:/usr/sbin:/sbin"
 mkdir -p "$AGENTS_DIR"
 
 cat > "$AGENTS_DIR/$LABEL_TUI.plist" <<EOF
@@ -114,12 +115,58 @@ cat > "$AGENTS_DIR/$LABEL_DAEMON.plist" <<EOF
 EOF
 log "plist 생성: $AGENTS_DIR/{$LABEL_TUI,$LABEL_DAEMON}.plist"
 
+# ---- Gemini(agy) 인스턴스 (.env.gemini 있을 때만) ----
+LABEL_GEMINI=com.codex-discord.gemini
+if [[ -f "$PROJECT_DIR/.env.gemini" ]]; then
+  AGY_PATH=$(command -v agy || true)
+  [[ -z "$AGY_PATH" && -x "$HOME/.local/bin/agy" ]] && AGY_PATH="$HOME/.local/bin/agy"
+  [[ -n "$AGY_PATH" ]] || fail ".env.gemini가 있으나 agy를 찾을 수 없음 — Antigravity CLI를 설치하세요"
+  cat > "$AGENTS_DIR/$LABEL_GEMINI.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$LABEL_GEMINI</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$NODE_BIN</string>
+        <string>--env-file=.env.gemini</string>
+        <string>src/index.mjs</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>$PROJECT_DIR</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>15</integer>
+    <key>StandardOutPath</key>
+    <string>$PROJECT_DIR/logs/daemon-gemini.log</string>
+    <key>StandardErrorPath</key>
+    <string>$PROJECT_DIR/logs/daemon-gemini.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>$(dirname "$AGY_PATH"):$PATH_LINE</string>
+    </dict>
+</dict>
+</plist>
+EOF
+  log "plist 생성: $AGENTS_DIR/$LABEL_GEMINI.plist (Gemini 인스턴스)"
+fi
+
 # ---- 등록 (재실행 대비 bootout 후 bootstrap) ----
 UID_N=$(id -u)
 launchctl bootout "gui/$UID_N/$LABEL_TUI" 2>/dev/null || true
 launchctl bootout "gui/$UID_N/$LABEL_DAEMON" 2>/dev/null || true
+launchctl bootout "gui/$UID_N/$LABEL_GEMINI" 2>/dev/null || true
 launchctl bootstrap "gui/$UID_N" "$AGENTS_DIR/$LABEL_TUI.plist"
 launchctl bootstrap "gui/$UID_N" "$AGENTS_DIR/$LABEL_DAEMON.plist"
+if [[ -f "$PROJECT_DIR/.env.gemini" && -f "$AGENTS_DIR/$LABEL_GEMINI.plist" ]]; then
+  launchctl bootstrap "gui/$UID_N" "$AGENTS_DIR/$LABEL_GEMINI.plist"
+fi
 log "LaunchAgent 등록 완료 (로그인 시 자동 기동)"
 
 # ---- 확인 ----

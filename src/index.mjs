@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 import { Client, GatewayIntentBits, Partials } from 'discord.js';
 import { SessionStore } from './sessions.mjs';
 import { runCodexTurn, killActiveCodexChildren } from './codex.mjs';
+import { runAgyTurn, killActiveAgyChildren } from './agy.mjs';
 import { chunkMessage } from './chunk.mjs';
 import { pasteToPane, capturePane, extractSessionId, paneCurrentCommand } from './tmux.mjs';
 import { findRolloutById, RolloutTail } from './rollout.mjs';
@@ -16,13 +17,22 @@ const ALLOWED = new Set(
   (process.env.ALLOWED_USER_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
 );
 const WORKDIR = process.env.CODEX_WORKDIR;
+// 엔진 선택: codex(기본) | agy(Antigravity CLI = Gemini). 인스턴스마다 .env 파일로 분리 실행.
+const ENGINE = process.env.ENGINE ?? 'codex';
+const runTurn = ENGINE === 'agy' ? runAgyTurn : runCodexTurn;
+// 인스턴스별 데이터 폴더 (두 데몬이 락파일·세션맵을 공유하면 안 됨)
+const DATA_DIR = process.env.DATA_DIR ?? 'data';
 
 if (!TOKEN || ALLOWED.size === 0 || !WORKDIR) {
   console.error('DISCORD_TOKEN, ALLOWED_USER_IDS, CODEX_WORKDIR를 .env에 설정하세요.');
   process.exit(1);
 }
+if (!['codex', 'agy'].includes(ENGINE)) {
+  console.error(`알 수 없는 ENGINE: ${ENGINE} (codex | agy)`);
+  process.exit(1);
+}
 
-const LOCK_PATH = fileURLToPath(new URL('../data/daemon.pid', import.meta.url));
+const LOCK_PATH = fileURLToPath(new URL(`../${DATA_DIR}/daemon.pid`, import.meta.url));
 try {
   const oldPid = Number(await readFile(LOCK_PATH, 'utf8'));
   if (oldPid) {
@@ -38,12 +48,13 @@ try {
 await mkdir(dirname(LOCK_PATH), { recursive: true });
 await writeFile(LOCK_PATH, String(process.pid));
 
-const TUI_PANE = process.env.TUI_PANE || null;            // 예: ai:codex-live
+const TUI_PANE = process.env.TUI_PANE || null;            // 예: codex-live:0.0
 const TUI_CHANNEL_ID = process.env.TUI_CHANNEL_ID || null;
-const TUI_ENABLED = Boolean(TUI_PANE && TUI_CHANNEL_ID);
+// 라이브 TUI 모드는 codex 전용 (agy는 롤아웃 파일이 없어 tail 불가)
+const TUI_ENABLED = Boolean(TUI_PANE && TUI_CHANNEL_ID && ENGINE === 'codex');
 
 const store = new SessionStore(
-  fileURLToPath(new URL('../data/sessions.json', import.meta.url)),
+  fileURLToPath(new URL(`../${DATA_DIR}/sessions.json`, import.meta.url)),
 );
 await store.load();
 
@@ -170,7 +181,7 @@ client.on('messageCreate', async (message) => {
       message.channel.sendTyping().catch(() => {});
       const prompt = await withAttachments(message, basePrompt);
       const prior = store.get(message.channelId);
-      const result = await runCodexTurn({ sessionId: prior, prompt, cwd: WORKDIR });
+      const result = await runTurn({ sessionId: prior, prompt, cwd: WORKDIR });
       await relayReply(message.channel, result.reply);
       if (result.sessionId && result.sessionId !== prior) {
         try {
@@ -188,12 +199,13 @@ client.on('messageCreate', async (message) => {
 });
 
 client.once('clientReady', () => {
-  console.log(`로그인: ${client.user.tag} / 허용 사용자 ${ALLOWED.size}명 / 작업폴더 ${WORKDIR}`);
+  console.log(`로그인: ${client.user.tag} / 엔진 ${ENGINE} / 허용 사용자 ${ALLOWED.size}명 / 작업폴더 ${WORKDIR}`);
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.once(sig, () => {
     killActiveCodexChildren();
+    killActiveAgyChildren();
     client.destroy();
     try { unlinkSync(LOCK_PATH); } catch { /* 없으면 무시 */ }
     process.exit(0);
