@@ -52,6 +52,10 @@ export function runAgyTurn({ sessionId, prompt, cwd, timeoutMs = 15 * 60 * 1000 
       child.kill('SIGKILL');
       reject(new Error(`agy가 ${timeoutMs / 1000}초 안에 끝나지 않아 중단`));
     }, timeoutMs);
+    // setEncoding 없이 Buffer를 문자열로 이어붙이면 청크 경계에서 잘린
+    // 멀티바이트 문자(한글 등)가 �로 깨진다 — 실사용에서 확인(2026-07-24)
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     child.stdout.on('data', (d) => { stdout += d; });
     child.stderr.on('data', (d) => { stderr += d; });
     child.on('error', (err) => { clearTimeout(timer); activeChildren.delete(child); reject(err); });

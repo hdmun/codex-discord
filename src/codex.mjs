@@ -58,6 +58,9 @@ export function runCodexTurn({ sessionId, prompt, cwd, timeoutMs = 15 * 60 * 100
       child.kill('SIGKILL');
       reject(new Error(`codex가 ${timeoutMs / 1000}초 안에 끝나지 않아 중단`));
     }, timeoutMs);
+    // 청크 경계에서 멀티바이트 문자가 깨지지 않도록 (agy에서 실증된 잠복 버그)
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
     child.stdout.on('data', (d) => { stdout += d; });
     child.stderr.on('data', (d) => { stderr += d; });
     child.on('error', (err) => { clearTimeout(timer); activeChildren.delete(child); reject(err); });
