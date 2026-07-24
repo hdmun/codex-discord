@@ -77,6 +77,17 @@ bash scripts/install.sh
 - TUI 화면 구경: `tmux attach -t codex-live`
 - 이후 재부팅하면 전부 자동으로 올라온다. 낮에 TUI가 죽으면 `npm run tui:up`
 
+## (선택) Gemini 봇 병행 설치
+
+사용자가 Gemini도 원하면 (Antigravity CLI 필요 — `command -v agy`로 확인):
+
+1. 3단계를 반복해 **두 번째 봇 계정**(예: "Gemini Bot")을 만들고 토큰 발급 (같은 서버에 초대)
+2. `.env.gemini.example`을 `.env.gemini`로 복사해 채운다 — `ENGINE=agy`, `DATA_DIR=data-gemini`는 그대로 두고, `CODEX_WORKDIR`는 codex와 다른 폴더 권장
+3. `bash scripts/install.sh` 재실행 → `com.codex-discord.gemini` 데몬이 추가 등록된다
+4. 확인: `logs/daemon-gemini.log`에 "로그인: ... / 엔진 agy" 줄
+
+agy가 없는 사용자에게는 이 단계를 권하지 않는다 (Antigravity 미사용자는 codex 단독으로 충분).
+
 ## 문제 해결
 
 - 봇이 응답 없음: `logs/daemon.log` 확인. "Used disallowed intents" → 3-3 인텐트 누락
