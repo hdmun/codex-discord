@@ -1,0 +1,11 @@
+{
+  "name": "codex-discord",
+  "owner": { "name": "netwaif" },
+  "plugins": [
+    {
+      "name": "codex-discord",
+      "source": "./",
+      "description": "Discord ↔ Codex CLI 브리지 — 설치는 /codex-discord:setup 스킬이 대화로 안내"
+    }
+  ]
+}

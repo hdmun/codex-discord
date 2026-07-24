@@ -1,0 +1,14 @@
+{
+  "name": "codex-discord",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node --env-file=.env src/index.mjs",
+    "tui:up": "bash scripts/tui-up.sh",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3"
+  }
+}

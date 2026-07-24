@@ -1,0 +1,9 @@
+{
+  "name": "codex-discord",
+  "version": "1.0.0",
+  "description": "Discord ↔ Codex CLI 브리지 — Discord 채널에서 Codex를 호출하고, 라이브 TUI 세션 중계·파일 첨부·부팅 자동 기동까지",
+  "author": { "name": "netwaif" },
+  "repository": "https://github.com/netwaif/codex-discord",
+  "license": "MIT",
+  "skills": "./skills/"
+}

@@ -1,0 +1,13 @@
+node_modules/
+.env
+data/
+logs/
+
+# 개인 운영 문서 (공개 제외)
+SESSION.md
+SESSION.template.md
+CLAUDE.md
+docs/superpowers/
+docs/실전형-촬영-절차.md
+docs/촬영-실전형-문서화-메모.md
+docs/촬영-절차.md
