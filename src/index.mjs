@@ -32,6 +32,7 @@ const TRIGGER_NAME = process.env.TRIGGER_NAME ?? '코덱스';
 const NAME_TRIGGER_CHANNELS = new Set(
   (process.env.NAME_TRIGGER_CHANNEL_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
 );
+const sharedQueues = new Map(); // 공유 채널별 ContextQueue — 호명 안 된 대화도 따라 듣는다
 
 if (!TOKEN || ALLOWED.size === 0 || !WORKDIR) {
   console.error('DISCORD_TOKEN, ALLOWED_USER_IDS, CODEX_WORKDIR를 .env에 설정하세요.');
@@ -180,24 +181,38 @@ client.on('messageCreate', async (message) => {
   }
 
   // ===== 기존 headless 경로 (기존 코드 그대로) =====
-  if (message.author.bot) return;
+  // 공유 채널: TUI 분기와 동일 의미론(classifyMessage) + 채널별 컨텍스트 큐. 전용 채널 동작은 불변.
+  let sharedCtx = null;
+  if (NAME_TRIGGER_CHANNELS.has(message.channelId)) {
+    const verdict = classifyMessage({
+      isMe: message.author.id === client.user.id,
+      isBot: message.author.bot,
+      allowed: ALLOWED.has(message.author.id),
+      mentionsMe: message.mentions.users.has(client.user.id),
+      mentionsOthers: message.mentions.users.size > 0 && !message.mentions.users.has(client.user.id),
+      content: message.content ?? '',
+      triggerName: TRIGGER_NAME,
+    });
+    if (verdict === 'ignore') return;
+    const speaker = message.member?.displayName ?? message.author.username;
+    let queue = sharedQueues.get(message.channelId);
+    if (!queue) { queue = new ContextQueue(); sharedQueues.set(message.channelId, queue); }
+    if (verdict === 'context') { queue.push(speaker, message.cleanContent ?? ''); return; }
+    sharedCtx = { queue, speaker };
+  } else if (message.author.bot) return;
   if (!ALLOWED.has(message.author.id)) return;
   // 다른 봇(예: Claude)을 멘션한 메시지는 그 봇의 몫 — 가로채지 않는다
-  if (message.mentions.users.size > 0 && !message.mentions.users.has(client.user.id)) return;
+  if (!sharedCtx && message.mentions.users.size > 0 && !message.mentions.users.has(client.user.id)) return;
   const basePrompt = message.content?.trim() ?? '';
   if (!basePrompt && message.attachments.size === 0) return;
-  // 공유 채널에서는 호명(멘션 또는 TRIGGER_NAME 시작)일 때만 응답 — 전용 채널 동작은 불변
-  if (
-    NAME_TRIGGER_CHANNELS.has(message.channelId)
-    && !message.mentions.users.has(client.user.id)
-    && !basePrompt.startsWith(TRIGGER_NAME)
-  ) return;
 
   enqueue(message.channelId, async () => {
     const typing = setInterval(() => message.channel.sendTyping().catch(() => {}), 8000);
+    let block = null;
     try {
       message.channel.sendTyping().catch(() => {});
-      const prompt = await withAttachments(message, basePrompt);
+      let prompt = await withAttachments(message, basePrompt);
+      if (sharedCtx) { block = sharedCtx.queue.drain(sharedCtx.speaker, prompt); prompt = block; }
       const prior = store.get(message.channelId);
       const result = await runTurn({ sessionId: prior, prompt, cwd: WORKDIR });
       await relayReply(message.channel, result.reply);
@@ -209,6 +224,7 @@ client.on('messageCreate', async (message) => {
         }
       }
     } catch (err) {
+      if (sharedCtx && block !== null) sharedCtx.queue.restore(block); // 실패 시 컨텍스트 유실 방지
       await message.channel.send(`⚠️ ${String(err.message ?? err).slice(0, 1500)}`).catch(() => {});
     } finally {
       clearInterval(typing);
