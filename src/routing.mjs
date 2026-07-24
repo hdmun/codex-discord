@@ -1,8 +1,8 @@
-export function classifyMessage({ isMe, isBot, allowed, mentionsMe, mentionsOthers, content }) {
+export function classifyMessage({ isMe, isBot, allowed, mentionsMe, mentionsOthers, content, triggerName = '코덱스' }) {
   if (isMe) return 'ignore';
   if (isBot) return 'context';
   if (!allowed) return 'ignore';
-  if (mentionsMe || content.trim().startsWith('코덱스')) return 'trigger';
+  if (mentionsMe || content.trim().startsWith(triggerName)) return 'trigger';
   if (mentionsOthers) return 'context';
   return 'context';
 }

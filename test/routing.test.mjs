@@ -31,6 +31,14 @@ test('코덱스로 시작하면 trigger', () => {
   assert.equal(classifyMessage({ ...base, content: '코덱스야 a.py 만들어줘' }), 'trigger');
 });
 
+test('triggerName 지정 시 그 이름으로 시작하면 trigger', () => {
+  assert.equal(classifyMessage({ ...base, content: '제미나이 안녕', triggerName: '제미나이' }), 'trigger');
+});
+
+test('triggerName 지정 시 다른 봇 호명은 context', () => {
+  assert.equal(classifyMessage({ ...base, content: '코덱스 안녕', triggerName: '제미나이' }), 'context');
+});
+
 test('다른 봇 멘션이면 context', () => {
   assert.equal(classifyMessage({ ...base, mentionsOthers: true, content: '@Claude 어때?' }), 'context');
 });

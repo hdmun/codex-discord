@@ -27,6 +27,11 @@ const DATA_DIR = process.env.DATA_DIR ?? 'data';
 const CHANNEL_ALLOW = new Set(
   (process.env.CHANNEL_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
 );
+// 공유 채널 호명 게이트: 이 목록의 채널에서는 헤드리스도 멘션 또는 TRIGGER_NAME 시작일 때만 응답
+const TRIGGER_NAME = process.env.TRIGGER_NAME ?? '코덱스';
+const NAME_TRIGGER_CHANNELS = new Set(
+  (process.env.NAME_TRIGGER_CHANNEL_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+);
 
 if (!TOKEN || ALLOWED.size === 0 || !WORKDIR) {
   console.error('DISCORD_TOKEN, ALLOWED_USER_IDS, CODEX_WORKDIR를 .env에 설정하세요.');
@@ -152,6 +157,7 @@ client.on('messageCreate', async (message) => {
       mentionsMe: message.mentions.users.has(client.user.id),
       mentionsOthers: message.mentions.users.size > 0 && !message.mentions.users.has(client.user.id),
       content: message.content ?? '',
+      triggerName: TRIGGER_NAME,
     });
     if (verdict === 'ignore') return;
     const speaker = message.member?.displayName ?? message.author.username;
@@ -180,6 +186,12 @@ client.on('messageCreate', async (message) => {
   if (message.mentions.users.size > 0 && !message.mentions.users.has(client.user.id)) return;
   const basePrompt = message.content?.trim() ?? '';
   if (!basePrompt && message.attachments.size === 0) return;
+  // 공유 채널에서는 호명(멘션 또는 TRIGGER_NAME 시작)일 때만 응답 — 전용 채널 동작은 불변
+  if (
+    NAME_TRIGGER_CHANNELS.has(message.channelId)
+    && !message.mentions.users.has(client.user.id)
+    && !basePrompt.startsWith(TRIGGER_NAME)
+  ) return;
 
   enqueue(message.channelId, async () => {
     const typing = setInterval(() => message.channel.sendTyping().catch(() => {}), 8000);
