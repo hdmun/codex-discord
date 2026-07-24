@@ -121,6 +121,12 @@ if [[ -f "$PROJECT_DIR/.env.gemini" ]]; then
   AGY_PATH=$(command -v agy || true)
   [[ -z "$AGY_PATH" && -x "$HOME/.local/bin/agy" ]] && AGY_PATH="$HOME/.local/bin/agy"
   [[ -n "$AGY_PATH" ]] || fail ".env.gemini가 있으나 agy를 찾을 수 없음 — Antigravity CLI를 설치하세요"
+  # gemini 인스턴스 워크스페이스에도 AGENTS.md 설치
+  GEMINI_WORKDIR=$(set -a; source "$PROJECT_DIR/.env.gemini"; set +a; echo "$CODEX_WORKDIR")
+  if [[ -n "$GEMINI_WORKDIR" ]]; then
+    mkdir -p "$GEMINI_WORKDIR"
+    [[ -f "$GEMINI_WORKDIR/AGENTS.md" ]] || cp "$PROJECT_DIR/templates/AGENTS.md" "$GEMINI_WORKDIR/AGENTS.md"
+  fi
   cat > "$AGENTS_DIR/$LABEL_GEMINI.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

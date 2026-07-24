@@ -22,6 +22,11 @@ const ENGINE = process.env.ENGINE ?? 'codex';
 const runTurn = ENGINE === 'agy' ? runAgyTurn : runCodexTurn;
 // 인스턴스별 데이터 폴더 (두 데몬이 락파일·세션맵을 공유하면 안 됨)
 const DATA_DIR = process.env.DATA_DIR ?? 'data';
+// (선택) 채널 allowlist — 두 봇이 같은 채널을 보면 일반 메시지에 둘 다 응답하므로,
+// 인스턴스를 특정 채널로 묶을 때 사용. 비우면 모든 채널·DM 수신(기존 동작).
+const CHANNEL_ALLOW = new Set(
+  (process.env.CHANNEL_IDS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+);
 
 if (!TOKEN || ALLOWED.size === 0 || !WORKDIR) {
   console.error('DISCORD_TOKEN, ALLOWED_USER_IDS, CODEX_WORKDIR를 .env에 설정하세요.');
@@ -138,6 +143,7 @@ async function ensureTuiTail(channel) {
 }
 
 client.on('messageCreate', async (message) => {
+  if (CHANNEL_ALLOW.size > 0 && !CHANNEL_ALLOW.has(message.channelId)) return;
   if (TUI_ENABLED && message.channelId === TUI_CHANNEL_ID) {
     const verdict = classifyMessage({
       isMe: message.author.id === client.user.id,
