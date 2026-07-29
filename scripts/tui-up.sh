@@ -71,13 +71,23 @@ $TMUX_BIN send-keys -t "$PANE" Enter
 log "더미 턴 전송"
 
 # 롤아웃 파일 생성 확인 (최대 90초)
-for _ in $(seq 1 90); do
+# 부팅 부하로 Enter가 텍스트 처리 전에 도착하면 문구가 입력줄에 남고 제출되지 않는다
+# (2026-07-29 실측) → 10초마다 입력줄을 확인해 우리가 보낸 문구가 남아 있으면 Enter 재전송.
+for i in $(seq 1 90); do
   sleep 1
   FILE=$(find "$HOME/.codex/sessions" -name "*$SID*" -type f 2>/dev/null | head -1)
   if [[ -n "$FILE" ]]; then
     log "롤아웃 파일 확인: $FILE"
     log "준비 완료"
     exit 0
+  fi
+  if (( i % 10 == 0 )); then
+    # 마지막 › 줄 = 입력줄. 제출 전엔 우리 문구, 제출 후엔 빈 줄/codex 제안 문구.
+    LAST_INPUT=$($TMUX_BIN capture-pane -p -t "$PANE" | grep '›' | tail -1 || true)
+    if [[ "$LAST_INPUT" == *"Boot check"* ]]; then
+      $TMUX_BIN send-keys -t "$PANE" Enter
+      log "더미 턴 미제출 감지(입력줄 잔류) — Enter 재전송"
+    fi
   fi
 done
 log "경고: 롤아웃 파일 90초 내 미생성 — 첫 호명 시 Discord 경고가 뜨면 TUI에 메시지 한 번 보낼 것"
