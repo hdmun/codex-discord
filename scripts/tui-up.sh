@@ -50,15 +50,16 @@ $TMUX_BIN send-keys -t "$PANE" "$CODEX_CMD"
 $TMUX_BIN send-keys -t "$PANE" Enter
 log "codex TUI 실행 커맨드 전송"
 
-# TUI 상태바에 세션 UUID가 뜰 때까지 대기 (최대 60초)
+# TUI 상태바에 세션 UUID가 뜰 때까지 대기 (최대 180초)
+# 부팅 직후엔 시스템 부하로 codex 기동이 60초를 넘긴다 (2026-07-30·07-31 연속 실패 실측) → 180초
 SID=""
-for _ in $(seq 1 60); do
+for _ in $(seq 1 180); do
   sleep 1
   SID=$($TMUX_BIN capture-pane -p -t "$PANE" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | tail -1 || true)
   [[ -n "$SID" ]] && break
 done
 if [[ -z "$SID" ]]; then
-  log "실패: 60초 내 codex 세션 ID 미검출 — pane 화면 확인 필요"
+  log "실패: 180초 내 codex 세션 ID 미검출 — pane 화면 확인 필요"
   exit 1
 fi
 log "codex 세션 감지: $SID"
@@ -70,10 +71,10 @@ sleep 1  # 텍스트 처리 전 Enter가 도착하면 제출되지 않음 (paste
 $TMUX_BIN send-keys -t "$PANE" Enter
 log "더미 턴 전송"
 
-# 롤아웃 파일 생성 확인 (최대 90초)
+# 롤아웃 파일 생성 확인 (최대 180초 — 부팅 부하 여유, 2026-07-31 상향)
 # 부팅 부하로 Enter가 텍스트 처리 전에 도착하면 문구가 입력줄에 남고 제출되지 않는다
 # (2026-07-29 실측) → 10초마다 입력줄을 확인해 우리가 보낸 문구가 남아 있으면 Enter 재전송.
-for i in $(seq 1 90); do
+for i in $(seq 1 180); do
   sleep 1
   FILE=$(find "$HOME/.codex/sessions" -name "*$SID*" -type f 2>/dev/null | head -1)
   if [[ -n "$FILE" ]]; then
@@ -90,5 +91,5 @@ for i in $(seq 1 90); do
     fi
   fi
 done
-log "경고: 롤아웃 파일 90초 내 미생성 — 첫 호명 시 Discord 경고가 뜨면 TUI에 메시지 한 번 보낼 것"
+log "경고: 롤아웃 파일 180초 내 미생성 — 첫 호명 시 Discord 경고가 뜨면 TUI에 메시지 한 번 보낼 것"
 exit 1
