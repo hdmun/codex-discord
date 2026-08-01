@@ -3,14 +3,18 @@
 # 전용 tmux 세션에 codex TUI를 띄우고, 롤아웃 파일 생성을 위한 더미 턴 1회를 보낸다.
 # 규칙 각인은 워크스페이스 AGENTS.md가 담당하므로 여기서는 아무 한마디면 된다.
 # 설정은 전부 프로젝트 루트 .env에서 읽는다 (CODEX_BIN, CODEX_WORKDIR, TUI_PANE).
+# 인스턴스 지원: 첫 인자로 env 파일을 지정하면 그 설정으로 뜬다 (기본 .env — 하위 호환).
+#   예: scripts/tui-up.sh .env.collab
 set -uo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-if [[ ! -f "$PROJECT_DIR/.env" ]]; then
-  echo "오류: $PROJECT_DIR/.env 없음 — .env.example을 복사해 채우세요" >&2
+ENV_FILE="${1:-.env}"
+[[ "$ENV_FILE" == /* ]] || ENV_FILE="$PROJECT_DIR/$ENV_FILE"
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "오류: $ENV_FILE 없음 — .env.example을 복사해 채우세요" >&2
   exit 1
 fi
-set -a; source "$PROJECT_DIR/.env"; set +a
+set -a; source "$ENV_FILE"; set +a
 
 # tmux 탐지: PATH → Apple Silicon → Intel 순 (변수명 TMUX는 tmux의 소켓 경로 예약 변수라 금지)
 TMUX_BIN=$(command -v tmux || true)

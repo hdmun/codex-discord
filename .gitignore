@@ -13,3 +13,6 @@ docs/촬영-실전형-문서화-메모.md
 docs/촬영-절차.md
 .env.gemini
 data-gemini/
+.env.*
+!.env.example
+data-*/

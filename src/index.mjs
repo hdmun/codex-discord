@@ -63,6 +63,9 @@ const TUI_PANE = process.env.TUI_PANE || null;            // 예: codex-live:0.0
 const TUI_CHANNEL_ID = process.env.TUI_CHANNEL_ID || null;
 // 라이브 TUI 모드는 codex 전용 (agy는 롤아웃 파일이 없어 tail 불가)
 const TUI_ENABLED = Boolean(TUI_PANE && TUI_CHANNEL_ID && ENGINE === 'codex');
+// TUI 채널이 이 봇 전용이면 off — 호명(멘션·TRIGGER_NAME) 없이 모든 메시지에 응답.
+// 기본 on = 기존 동작(공유 수다 채널을 TUI 채널로 쓰는 배치의 호명 게이트) 유지.
+const TUI_TRIGGER_GATE = (process.env.TUI_TRIGGER_GATE ?? 'on') !== 'off';
 
 const store = new SessionStore(
   fileURLToPath(new URL(`../${DATA_DIR}/sessions.json`, import.meta.url)),
@@ -158,7 +161,8 @@ client.on('messageCreate', async (message) => {
       mentionsMe: message.mentions.users.has(client.user.id),
       mentionsOthers: message.mentions.users.size > 0 && !message.mentions.users.has(client.user.id),
       content: message.content ?? '',
-      triggerName: TRIGGER_NAME,
+      // 게이트 off = 빈 접두사 — 허용 사용자의 모든 메시지가 trigger로 분류된다
+      triggerName: TUI_TRIGGER_GATE ? TRIGGER_NAME : '',
     });
     if (verdict === 'ignore') return;
     const speaker = message.member?.displayName ?? message.author.username;
