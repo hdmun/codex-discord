@@ -7,7 +7,7 @@ import { SessionStore } from './sessions.mjs';
 import { runCodexTurn, killActiveCodexChildren } from './codex.mjs';
 import { runAgyTurn, killActiveAgyChildren } from './agy.mjs';
 import { chunkMessage } from './chunk.mjs';
-import { pasteToPane, capturePane, extractSessionId, paneCurrentCommand } from './tmux.mjs';
+import { pasteToPane, capturePane, extractSessionId, paneCurrentCommand, UUID_RE } from './tmux.mjs';
 import { findRolloutById, RolloutTail } from './rollout.mjs';
 import { classifyMessage, ContextQueue } from './routing.mjs';
 import { extractAttachmentMarkers, resolveUploadPath, saveIncomingAttachments } from './attachments.mjs';
@@ -143,12 +143,16 @@ async function ensureTuiTail(channel) {
   if (sid === tuiSessionId && tuiTail) return;
   const file = await findRolloutById(sid);
   if (!file) throw new Error(`세션 ${sid}의 롤아웃 파일이 아직 없음 — TUI에서 메시지를 한 번 보낸 뒤 다시 시도하세요`);
+  // pane 폭이 좁으면 sid가 잘린 접두어일 수 있다 — 파일명의 전체 UUID로 정규화해야
+  // 다음 호출의 캐시 비교가 성립해 tail을 불필요하게 재시작하지 않는다.
+  const fullSid = file.match(UUID_RE)?.[0] ?? sid;
+  if (fullSid === tuiSessionId && tuiTail) return;
   tuiTail?.stop();
-  tuiSessionId = sid;
+  tuiSessionId = fullSid;
   tuiTail = new RolloutTail(file);
   // 콜백이 캡처하는 channel은 최초 연결 시점의 것 — TUI 채널이 단일 고정이라 안전
   await tuiTail.start((text) => relayReply(channel, text));
-  console.log(`TUI tail 연결: 세션 ${sid}`);
+  console.log(`TUI tail 연결: 세션 ${fullSid}`);
 }
 
 client.on('messageCreate', async (message) => {

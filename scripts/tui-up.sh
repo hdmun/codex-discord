@@ -56,10 +56,16 @@ log "codex TUI 실행 커맨드 전송"
 
 # TUI 상태바에 세션 UUID가 뜰 때까지 대기 (최대 180초)
 # 부팅 직후엔 시스템 부하로 codex 기동이 60초를 넘긴다 (2026-07-30·07-31 연속 실패 실측) → 180초
+# pane 폭이 좁으면 상태바가 UUID를 말줄임(…)으로 자른다(2026-08-03 실측) — 앞 4그룹까지
+# 보이면 잘린 접두어를 그대로 SID로 쓴다. 아래 롤아웃 확인이 find "*$SID*" 부분 일치라 동작한다.
 SID=""
 for _ in $(seq 1 180); do
   sleep 1
-  SID=$($TMUX_BIN capture-pane -p -t "$PANE" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | tail -1 || true)
+  CAP=$($TMUX_BIN capture-pane -p -t "$PANE" || true)
+  SID=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' <<<"$CAP" | tail -1 || true)
+  if [[ -z "$SID" ]]; then
+    SID=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}(-[0-9a-f]{1,12})?…' <<<"$CAP" | tail -1 | tr -d '…' || true)
+  fi
   [[ -n "$SID" ]] && break
 done
 if [[ -z "$SID" ]]; then
