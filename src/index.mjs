@@ -155,6 +155,13 @@ async function ensureTuiTail(channel) {
   console.log(`TUI tail 연결: 세션 ${fullSid}`);
 }
 
+// 디스코드 @멘션 자동완성은 봇의 "통합 역할"을 고르는 경우가 많다 — 역할 멘션도
+// 사용자 멘션과 동일하게 인식해야 "됐다 안 됐다" 없이 트리거된다 (2026-08-05 실측)
+const mentionsMe = (m) => m.mentions.users.has(client.user.id)
+  || m.mentions.roles.some((r) => r.tags?.botId === client.user.id);
+const mentionsAnyone = (m) => m.mentions.users.size > 0
+  || m.mentions.roles.some((r) => r.tags?.botId);
+
 client.on('messageCreate', async (message) => {
   if (CHANNEL_ALLOW.size > 0 && !CHANNEL_ALLOW.has(message.channelId)) return;
   if (TUI_ENABLED && message.channelId === TUI_CHANNEL_ID) {
@@ -162,8 +169,8 @@ client.on('messageCreate', async (message) => {
       isMe: message.author.id === client.user.id,
       isBot: message.author.bot,
       allowed: ALLOWED.has(message.author.id),
-      mentionsMe: message.mentions.users.has(client.user.id),
-      mentionsOthers: message.mentions.users.size > 0 && !message.mentions.users.has(client.user.id),
+      mentionsMe: mentionsMe(message),
+      mentionsOthers: mentionsAnyone(message) && !mentionsMe(message),
       content: message.content ?? '',
       // 게이트 off = 빈 접두사 — 허용 사용자의 모든 메시지가 trigger로 분류된다
       triggerName: TUI_TRIGGER_GATE ? TRIGGER_NAME : '',
@@ -196,8 +203,8 @@ client.on('messageCreate', async (message) => {
       isMe: message.author.id === client.user.id,
       isBot: message.author.bot,
       allowed: ALLOWED.has(message.author.id),
-      mentionsMe: message.mentions.users.has(client.user.id),
-      mentionsOthers: message.mentions.users.size > 0 && !message.mentions.users.has(client.user.id),
+      mentionsMe: mentionsMe(message),
+      mentionsOthers: mentionsAnyone(message) && !mentionsMe(message),
       content: message.content ?? '',
       triggerName: TRIGGER_NAME,
     });
@@ -210,7 +217,7 @@ client.on('messageCreate', async (message) => {
   } else if (message.author.bot) return;
   if (!ALLOWED.has(message.author.id)) return;
   // 다른 봇(예: Claude)을 멘션한 메시지는 그 봇의 몫 — 가로채지 않는다
-  if (!sharedCtx && message.mentions.users.size > 0 && !message.mentions.users.has(client.user.id)) return;
+  if (!sharedCtx && mentionsAnyone(message) && !mentionsMe(message)) return;
   const basePrompt = message.content?.trim() ?? '';
   if (!basePrompt && message.attachments.size === 0) return;
 
