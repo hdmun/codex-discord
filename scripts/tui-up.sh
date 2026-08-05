@@ -38,21 +38,26 @@ CODEX_CMD="$CODEX_BIN -s workspace-write -c sandbox_workspace_write.network_acce
 log() { echo "[$(date '+%F %T')] $*"; }
 
 # 이미 codex가 떠 있으면 아무것도 하지 않는다 (멱등)
+# npm 배포판은 codex가 `#!/usr/bin/env node` 런처라 pane_current_command가 node로
+# 잡힌다(2026-08-05 E2E 실측) — 직접 실행 세션에서 node면 codex 런처다.
 if $TMUX_BIN has-session -t "$SESSION" 2>/dev/null; then
   cmd=$($TMUX_BIN display-message -p -t "$PANE" '#{pane_current_command}' 2>/dev/null || true)
-  if [[ "$cmd" == *codex* ]]; then
-    log "codex 이미 실행 중 ($SESSION) — 종료"
+  if [[ "$cmd" == *codex* || "$cmd" == node ]]; then
+    log "codex 이미 실행 중 ($SESSION, $cmd) — 종료"
     exit 0
   fi
   log "세션은 있으나 codex 아님($cmd) — 세션 재생성"
   $TMUX_BIN kill-session -t "$SESSION"
 fi
 
-$TMUX_BIN new-session -d -s "$SESSION" -c "$CODEX_WORKDIR" -x 200 -y 50
-# 스파이크 검증(2026-07-23): 텍스트와 Enter는 분리 전송
-$TMUX_BIN send-keys -t "$PANE" "$CODEX_CMD"
-$TMUX_BIN send-keys -t "$PANE" Enter
-log "codex TUI 실행 커맨드 전송"
+# 셸에 타이핑하지 않고 세션 명령으로 직접 실행한다 — 대화형 zsh의 compinit
+# 프롬프트가 send-keys 첫 글자를 삼켜 기동이 통째로 실패하는 경합 실측
+# (2026-08-05 E2E, 2/2 재현: insecure directories 프롬프트가 '/'를 응답으로 소비).
+# codex가 종료하면 pane·세션도 닫힌다 — 재기동은 이 스크립트 재실행(멱등).
+# PATH 전파: env 셔뱅(#!/usr/bin/env node)이 tmux 서버 환경에서도 node를 찾도록.
+$TMUX_BIN new-session -d -s "$SESSION" -c "$CODEX_WORKDIR" -x 200 -y 50 \
+  "PATH=\"$PATH\" exec $CODEX_CMD"
+log "codex TUI 직접 기동 (셸 비경유)"
 
 # TUI 상태바에 세션 UUID가 뜰 때까지 대기 (최대 180초)
 # 부팅 직후엔 시스템 부하로 codex 기동이 60초를 넘긴다 (2026-07-30·07-31 연속 실패 실측) → 180초

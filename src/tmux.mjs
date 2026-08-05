@@ -46,3 +46,43 @@ export function extractSessionId(paneText) {
   const m = paneText.match(UUID_RE) || paneText.match(UUID_PREFIX_RE);
   return m ? m[m.length - 1] : null;
 }
+
+// pane 프로세스 트리에 codex가 실존하는가 — 순수 판정부.
+// npm 배포판 codex는 `#!/usr/bin/env node` 런처라 pane_current_command가 node로
+// 잡힌다(2026-08-05 E2E 실측: 살아 있는 TUI를 죽은 것으로 오탐해 전송 차단).
+// 판정: argv0 basename이 codex* 이거나, node/bun 런처의 첫 인자 basename이 codex*.
+function isCodexProc(cmdline) {
+  const [argv0, argv1] = cmdline.split(' ');
+  const base = (p) => (p ?? '').split('/').pop();
+  if (base(argv0).startsWith('codex')) return true;
+  return ['node', 'bun'].includes(base(argv0)) && base(argv1).startsWith('codex');
+}
+
+export function treeHasCodex(psText, rootPid) {
+  const rows = [];
+  for (const line of psText.split('\n')) {
+    const m = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
+    if (m) rows.push({ pid: m[1], ppid: m[2], cmdline: m[3] });
+  }
+  const kids = new Map();
+  for (const r of rows) {
+    if (!kids.has(r.ppid)) kids.set(r.ppid, []);
+    kids.get(r.ppid).push(r.pid);
+  }
+  const ids = new Set([String(rootPid)]);
+  const todo = [String(rootPid)];
+  while (todo.length) {
+    for (const c of kids.get(todo.pop()) ?? []) {
+      if (!ids.has(c)) { ids.add(c); todo.push(c); }
+    }
+  }
+  return rows.some((r) => ids.has(r.pid) && isCodexProc(r.cmdline));
+}
+
+export async function paneHasCodex(pane) {
+  const cmd = await paneCurrentCommand(pane);
+  if (cmd.includes('codex')) return true;
+  const { stdout: pidOut } = await run('tmux', ['display-message', '-p', '-t', pane, '#{pane_pid}']);
+  const { stdout: psOut } = await run('ps', ['-axo', 'pid=,ppid=,command=']);
+  return treeHasCodex(psOut, pidOut.trim());
+}

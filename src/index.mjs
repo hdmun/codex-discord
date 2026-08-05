@@ -7,7 +7,7 @@ import { SessionStore } from './sessions.mjs';
 import { runCodexTurn, killActiveCodexChildren } from './codex.mjs';
 import { runAgyTurn, killActiveAgyChildren } from './agy.mjs';
 import { chunkMessage } from './chunk.mjs';
-import { pasteToPane, capturePane, extractSessionId, paneCurrentCommand, UUID_RE } from './tmux.mjs';
+import { pasteToPane, capturePane, extractSessionId, paneCurrentCommand, paneHasCodex, UUID_RE } from './tmux.mjs';
 import { findRolloutById, RolloutTail } from './rollout.mjs';
 import { classifyMessage, ContextQueue } from './routing.mjs';
 import { extractAttachmentMarkers, resolveUploadPath, saveIncomingAttachments } from './attachments.mjs';
@@ -134,9 +134,11 @@ async function withAttachments(message, content) {
 // TUI pane의 현재 codex 세션을 찾아 롤아웃 tail을 연결한다.
 // pane에서 codex를 재시작해 세션이 바뀌면 tail도 갈아탄다.
 async function ensureTuiTail(channel) {
-  const cmd = await paneCurrentCommand(TUI_PANE);
-  if (!cmd.includes('codex')) {
-    throw new Error(`TUI pane(${TUI_PANE})의 현재 프로세스가 codex가 아님(${cmd}) — 셸에 명령이 입력되는 것을 막기 위해 중단`);
+  // npm 배포판은 codex가 node 런처라 pane_current_command만으로는 오탐한다
+  // (2026-08-05 E2E 실측) — pane 프로세스 트리에서 codex 실존을 본다.
+  if (!(await paneHasCodex(TUI_PANE))) {
+    const cmd = await paneCurrentCommand(TUI_PANE);
+    throw new Error(`TUI pane(${TUI_PANE})에서 codex 프로세스를 찾지 못함(현재: ${cmd}) — 셸에 명령이 입력되는 것을 막기 위해 중단`);
   }
   const sid = extractSessionId(await capturePane(TUI_PANE));
   if (!sid) throw new Error(`TUI pane(${TUI_PANE})에서 codex 세션 ID를 찾지 못함 — TUI가 떠 있는지 확인하세요`);
