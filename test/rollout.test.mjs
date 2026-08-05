@@ -93,3 +93,16 @@ test('findRolloutByCwd: 일치 없으면 null', async () => {
   await mkdir(join(root, '2026', '08', '05'), { recursive: true });
   assert.equal(await findRolloutByCwd('/nope', root), null);
 });
+
+test('findRolloutByCwd: session_meta 첫 줄이 4KB를 넘어도 파싱한다 (2026-08-05 실측 18KB — instructions 포함)', async () => {
+  const { findRolloutByCwd } = await import('../src/rollout.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'sess-root-'));
+  const day = join(root, '2026', '08', '05');
+  await mkdir(day, { recursive: true });
+  const line = JSON.stringify({ type: 'session_meta', payload: {
+    session_id: 'dddddddd-1111-2222-3333-444444444444', cwd: '/big/work',
+    instructions: 'x'.repeat(20000) } }) + '\n';
+  await writeFile(join(day, 'rollout-2026-08-05T12-00-00-dddddddd-1111-2222-3333-444444444444.jsonl'), line);
+  const hit = await findRolloutByCwd('/big/work', root);
+  assert.equal(hit?.sid, 'dddddddd-1111-2222-3333-444444444444');
+});

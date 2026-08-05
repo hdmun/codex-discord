@@ -22,13 +22,28 @@ export async function findRolloutById(sessionId, root = SESSIONS_ROOT) {
 }
 
 async function readSessionMeta(file) {
+  // session_meta 첫 줄은 instructions가 실려 수십 KB에 달한다(2026-08-05 실측
+  // 18,450B — 4KB 고정 읽기는 잘린 JSON 파싱 실패로 전 파일을 건너뛰었다).
+  // 개행이 나올 때까지 읽고(상한 4MB), 멀티바이트 경계 안전하게 마지막에 디코드.
   let fh;
   try {
     fh = await open(file, 'r');
-    const buf = Buffer.alloc(4096);
-    const { bytesRead } = await fh.read(buf, 0, 4096, 0);
-    const line = buf.toString('utf8', 0, bytesRead).split('\n')[0];
-    return JSON.parse(line).payload ?? null;
+    const bufs = [];
+    let pos = 0;
+    while (pos < 4 * 1024 * 1024) {
+      const buf = Buffer.alloc(65536);
+      const { bytesRead } = await fh.read(buf, 0, buf.length, pos);
+      if (bytesRead === 0) break;
+      const view = buf.subarray(0, bytesRead);
+      const nl = view.indexOf(0x0a);
+      if (nl !== -1) {
+        bufs.push(view.subarray(0, nl));
+        break;
+      }
+      bufs.push(view);
+      pos += bytesRead;
+    }
+    return JSON.parse(Buffer.concat(bufs).toString('utf8')).payload ?? null;
   } catch {
     return null;
   } finally {
