@@ -21,6 +21,42 @@ export async function findRolloutById(sessionId, root = SESSIONS_ROOT) {
   return null;
 }
 
+async function readSessionMeta(file) {
+  let fh;
+  try {
+    fh = await open(file, 'r');
+    const buf = Buffer.alloc(4096);
+    const { bytesRead } = await fh.read(buf, 0, 4096, 0);
+    const line = buf.toString('utf8', 0, bytesRead).split('\n')[0];
+    return JSON.parse(line).payload ?? null;
+  } catch {
+    return null;
+  } finally {
+    await fh?.close();
+  }
+}
+
+// codex v0.146.0 기본 설정은 세션 UUID를 화면에 표시하지 않는다(2026-08-05 E2E
+// 실측 — 표시 여부는 버전·로컬 설정에 따라 흔들린다). 화면 스크레이핑 대신
+// 롤아웃 첫 줄 session_meta(cwd·session_id)로 세션을 특정하는 안정 검출원.
+// 최신 파일 우선 — 같은 cwd의 옛 세션이 남아 있어도 현재 세션이 이긴다
+// (tui-up.sh가 기동 직후 더미 턴으로 현재 세션의 롤아웃 존재를 보장한다).
+export async function findRolloutByCwd(cwd, root = SESSIONS_ROOT) {
+  try {
+    for (const y of await listSorted(root))
+      for (const m of await listSorted(join(root, y)))
+        for (const d of await listSorted(join(root, y, m)))
+          for (const f of (await readdir(join(root, y, m, d))).sort().reverse()) {
+            const file = join(root, y, m, d, f);
+            const meta = await readSessionMeta(file);
+            if (meta?.cwd === cwd) return { file, sid: meta.session_id ?? meta.id ?? null };
+          }
+  } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+  return null;
+}
+
 export function extractAgentMessages(jsonlChunk) {
   const out = [];
   for (const line of jsonlChunk.split('\n')) {

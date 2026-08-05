@@ -59,3 +59,37 @@ test('RolloutTail: 파일이 트렁케이트되면 처음부터 다시 따라간
   tail.stop();
   assert.deepEqual(got, ['새 파일']);
 });
+
+test('findRolloutByCwd: session_meta.cwd 일치 최신 파일에서 sid를 얻는다 (v0.146.0 화면 무표시 대응)', async () => {
+  const { findRolloutByCwd } = await import('../src/rollout.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'sess-root-'));
+  const day = join(root, '2026', '08', '05');
+  await mkdir(day, { recursive: true });
+  const meta = (sid, cwd) => JSON.stringify({ type: 'session_meta', payload: { session_id: sid, cwd } }) + '\n';
+  await writeFile(join(day, 'rollout-2026-08-05T10-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl'),
+    meta('aaaaaaaa-1111-2222-3333-444444444444', '/work/chat'));
+  await writeFile(join(day, 'rollout-2026-08-05T12-00-00-bbbbbbbb-5555-6666-7777-888888888888.jsonl'),
+    meta('bbbbbbbb-5555-6666-7777-888888888888', '/work/codex-discord-workspace'));
+  const hit = await findRolloutByCwd('/work/codex-discord-workspace', root);
+  assert.equal(hit.sid, 'bbbbbbbb-5555-6666-7777-888888888888');
+  assert.ok(hit.file.endsWith('888888888888.jsonl'));
+});
+
+test('findRolloutByCwd: 같은 cwd가 여럿이면 최신(파일명 시각 역순) 우선', async () => {
+  const { findRolloutByCwd } = await import('../src/rollout.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'sess-root-'));
+  const day = join(root, '2026', '08', '05');
+  await mkdir(day, { recursive: true });
+  const meta = (sid) => JSON.stringify({ type: 'session_meta', payload: { session_id: sid, cwd: '/w' } }) + '\n';
+  await writeFile(join(day, 'rollout-2026-08-05T09-00-00-aaaaaaaa-1111-2222-3333-444444444444.jsonl'), meta('aaaaaaaa-1111-2222-3333-444444444444'));
+  await writeFile(join(day, 'rollout-2026-08-05T13-00-00-cccccccc-9999-aaaa-bbbb-cccccccccccc.jsonl'), meta('cccccccc-9999-aaaa-bbbb-cccccccccccc'));
+  const hit = await findRolloutByCwd('/w', root);
+  assert.equal(hit.sid, 'cccccccc-9999-aaaa-bbbb-cccccccccccc');
+});
+
+test('findRolloutByCwd: 일치 없으면 null', async () => {
+  const { findRolloutByCwd } = await import('../src/rollout.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'sess-root-'));
+  await mkdir(join(root, '2026', '08', '05'), { recursive: true });
+  assert.equal(await findRolloutByCwd('/nope', root), null);
+});

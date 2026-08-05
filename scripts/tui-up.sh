@@ -59,25 +59,26 @@ $TMUX_BIN new-session -d -s "$SESSION" -c "$CODEX_WORKDIR" -x 200 -y 50 \
   "PATH=\"$PATH\" exec $CODEX_CMD"
 log "codex TUI 직접 기동 (셸 비경유)"
 
-# TUI 상태바에 세션 UUID가 뜰 때까지 대기 (최대 180초)
-# 부팅 직후엔 시스템 부하로 codex 기동이 60초를 넘긴다 (2026-07-30·07-31 연속 실패 실측) → 180초
-# pane 폭이 좁으면 상태바가 UUID를 말줄임(…)으로 자른다(2026-08-03 실측) — 앞 4그룹까지
-# 보이면 잘린 접두어를 그대로 SID로 쓴다. 아래 롤아웃 확인이 find "*$SID*" 부분 일치라 동작한다.
-SID=""
+# 세션 특정은 화면 UUID가 아니라 롤아웃 파일 session_meta(cwd)로 한다 —
+# codex v0.146.0 기본 설정은 세션 UUID를 화면 어디에도 표시하지 않는다
+# (2026-08-05 E2E 실측: 표시 여부가 버전·로컬 설정에 따라 흔들리는 검출원).
+# 롤아웃은 첫 턴 후에 생기므로 순서는 "기동 → 준비 대기 → 더미 턴 → 롤아웃 대기".
+STAMP=$(mktemp "${TMPDIR:-/tmp}/tui-up-stamp.XXXXXX")
+trap 'rm -f "$STAMP"' EXIT
+
+# TUI 준비 대기: 입력 프롬프트(›)나 배너가 뜰 때까지 (최대 180초 —
+# 부팅 직후엔 시스템 부하로 codex 기동이 60초를 넘긴다, 2026-07-30·07-31 실측)
+READY=""
 for _ in $(seq 1 180); do
   sleep 1
-  CAP=$($TMUX_BIN capture-pane -p -t "$PANE" || true)
-  SID=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' <<<"$CAP" | tail -1 || true)
-  if [[ -z "$SID" ]]; then
-    SID=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}(-[0-9a-f]{1,12})?…' <<<"$CAP" | tail -1 | tr -d '…' || true)
-  fi
-  [[ -n "$SID" ]] && break
+  CAP=$($TMUX_BIN capture-pane -p -t "$PANE" 2>/dev/null || true)
+  if grep -qE '›|OpenAI Codex' <<<"$CAP"; then READY=1; break; fi
 done
-if [[ -z "$SID" ]]; then
-  log "실패: 180초 내 codex 세션 ID 미검출 — pane 화면 확인 필요"
+if [[ -z "$READY" ]]; then
+  log "실패: 180초 내 TUI 미기동 — pane 화면 확인 필요"
   exit 1
 fi
-log "codex 세션 감지: $SID"
+log "TUI 준비 확인"
 
 # 더미 턴 1회 — 롤아웃 파일은 첫 턴 이후에 생성된다
 sleep 2
@@ -86,14 +87,20 @@ sleep 1  # 텍스트 처리 전 Enter가 도착하면 제출되지 않음 (paste
 $TMUX_BIN send-keys -t "$PANE" Enter
 log "더미 턴 전송"
 
-# 롤아웃 파일 생성 확인 (최대 180초 — 부팅 부하 여유, 2026-07-31 상향)
+# cwd 일치 신규 롤아웃 파일 대기 (최대 180초 — 부팅 부하 여유, 2026-07-31 상향)
 # 부팅 부하로 Enter가 텍스트 처리 전에 도착하면 문구가 입력줄에 남고 제출되지 않는다
 # (2026-07-29 실측) → 10초마다 입력줄을 확인해 우리가 보낸 문구가 남아 있으면 Enter 재전송.
 for i in $(seq 1 180); do
   sleep 1
-  FILE=$(find "$HOME/.codex/sessions" -name "*$SID*" -type f 2>/dev/null | head -1)
+  FILE=""
+  while IFS= read -r f; do
+    if head -1 "$f" 2>/dev/null | grep -qF "\"cwd\":\"$CODEX_WORKDIR\""; then
+      FILE="$f"; break
+    fi
+  done < <(find "$HOME/.codex/sessions" -name 'rollout-*.jsonl' -type f -newer "$STAMP" 2>/dev/null)
   if [[ -n "$FILE" ]]; then
-    log "롤아웃 파일 확인: $FILE"
+    SID=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' <<<"$FILE" | tail -1 || true)
+    log "codex 세션 감지(롤아웃): ${SID:-확인불가} — $FILE"
     log "준비 완료"
     exit 0
   fi
@@ -106,5 +113,5 @@ for i in $(seq 1 180); do
     fi
   fi
 done
-log "경고: 롤아웃 파일 180초 내 미생성 — 첫 호명 시 Discord 경고가 뜨면 TUI에 메시지 한 번 보낼 것"
+log "경고: cwd 일치 롤아웃 파일 180초 내 미생성 — 첫 호명 시 Discord 경고가 뜨면 TUI에 메시지 한 번 보낼 것"
 exit 1
