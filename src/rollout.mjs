@@ -80,7 +80,15 @@ export function extractAgentMessages(jsonlChunk) {
     let d;
     try { d = JSON.parse(trimmed); } catch { continue; }
     const p = d.payload ?? {};
-    if (p.type === 'agent_message' && p.message) out.push(p.message);
+    // codex 0.149.0부터 event_msg agent_message가 롤아웃에서 사라졌다(2026-08-26 실측).
+    // response_item message(role=assistant)는 0.146~0.149 전 구간에 동일 텍스트로
+    // 기록되므로 이쪽만 읽는다 — 구버전에서 두 소스를 다 읽으면 중복 게시가 된다.
+    if (d.type !== 'response_item' || p.type !== 'message' || p.role !== 'assistant') continue;
+    const text = (p.content ?? [])
+      .filter((c) => c?.type === 'output_text' && typeof c.text === 'string')
+      .map((c) => c.text)
+      .join('');
+    if (text) out.push(text);
   }
   return out;
 }

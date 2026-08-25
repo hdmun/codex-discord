@@ -2,3 +2,4 @@
 {"timestamp":"2026-07-22T15:02:58.704Z","type":"event_msg","payload":{"type":"user_message","message":"스파이크 테스트야. SPIKE_OK 라고만 답해줘.","images":[],"local_images":[],"audio":[],"local_audio":[],"text_elements":[]}}
 {"timestamp":"2026-07-22T15:03:00.674Z","type":"event_msg","payload":{"type":"agent_message","message":"SPIKE_OK","phase":"final_answer","memory_citation":null}}
 {"timestamp":"2026-07-22T15:03:00.689Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"019f8a59-f360-7d81-b499-25a8bcafdd2a","last_agent_message":"SPIKE_OK","started_at":1784732578,"completed_at":1784732580,"duration_ms":2022,"time_to_first_token_ms":1887}}
+{"timestamp":"2026-07-22T15:03:00.670Z","ordinal":9,"type":"response_item","payload":{"type":"message","id":"msg_fixture01","role":"assistant","content":[{"type":"output_text","text":"SPIKE_OK"}],"phase":"final_answer"}}
