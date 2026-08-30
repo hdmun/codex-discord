@@ -7,7 +7,7 @@ import { SessionStore } from './sessions.mjs';
 import { runCodexTurn, killActiveCodexChildren } from './codex.mjs';
 import { runAgyTurn, killActiveAgyChildren } from './agy.mjs';
 import { chunkMessage } from './chunk.mjs';
-import { pasteToPane, capturePane, extractSessionId, paneCurrentCommand, paneHasCodex, UUID_RE } from './tmux.mjs';
+import { pasteToPane, capturePane, extractSessionId, paneCurrentCommand, paneHasCodex, UUID_RE } from './pane.mjs';
 import { findRolloutById, findRolloutByCwd, RolloutTail } from './rollout.mjs';
 import { classifyMessage, ContextQueue } from './routing.mjs';
 import { extractAttachmentMarkers, resolveUploadPath, saveIncomingAttachments } from './attachments.mjs';
