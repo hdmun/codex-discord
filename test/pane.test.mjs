@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractSessionId, sanitizeForPaste } from '../src/pane.mjs';
+import { extractSessionId, sanitizeForPaste, selectBackendName } from '../src/pane.mjs';
 
 test('상태바 텍스트에서 마지막 UUID를 뽑는다', () => {
   const paneText = [
@@ -76,4 +76,62 @@ test('treeHasCodex: 다른 트리의 codex는 무시 (pane 자손만 판정)', a
     ' 7777     1 codex -s workspace-write',
   ].join('\n');
   assert.equal(treeHasCodex(ps, '964'), false);
+});
+
+// T-1: 두 백엔드 모듈이 어느 플랫폼에서든 import된다 (top-level 부작용 없음)
+test('T-1: pane.tmux.mjs / pane.orca.mjs가 예외 없이 import된다', async () => {
+  await assert.doesNotReject(() => import('../src/pane.tmux.mjs'));
+  await assert.doesNotReject(() => import('../src/pane.orca.mjs'));
+});
+
+// T-2: selectBackendName은 순수 함수 — 플랫폼과 무관하게 검증 가능
+test('T-2: selectBackendName — darwin/linux는 tmux, win32는 orca', () => {
+  assert.equal(selectBackendName('darwin'), 'tmux');
+  assert.equal(selectBackendName('linux'), 'tmux');
+  assert.equal(selectBackendName('win32'), 'orca');
+});
+
+// T-3: pane.tmux.mjs가 git show HEAD:src/tmux.mjs와 바이트 동일 (git 없는 환경 skip)
+test('T-3: pane.tmux.mjs 바이트 동일성 (git이 없으면 skip)', async (t) => {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { readFile } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const run = promisify(execFile);
+  let blob;
+  try {
+    const { stdout } = await run('git', ['show', 'HEAD:src/pane.tmux.mjs'], {
+      cwd: fileURLToPath(new URL('..', import.meta.url)),
+      encoding: 'utf8',
+      maxBuffer: 10 * 1024 * 1024,
+    });
+    blob = stdout;
+  } catch {
+    t.skip('git show 실패 — git 없는 환경으로 간주');
+    return;
+  }
+  const disk = await readFile(fileURLToPath(new URL('../src/pane.tmux.mjs', import.meta.url)), 'utf8');
+  assert.equal(disk.replace(/\r\n/g, '\n'), blob.replace(/\r\n/g, '\n'));
+});
+
+// T-4 (순수부만): Windows 화면 서명 판정 — 실측 tail 픽스처(§9)
+test('T-4: tailHasCodexSignature — codex TUI 서명이면 참', async () => {
+  const { tailHasCodexSignature } = await import('../src/pane.orca.mjs');
+  const tail = [
+    '│ >_ OpenAI Codex (v0.150.1)  │',
+    '› Ask Codex to do anything',
+    '· Ready · Context 100% left · 0.150.1 · 0 in · 0 out · Fast off',
+  ].join('\n');
+  assert.equal(tailHasCodexSignature(tail), true);
+});
+
+test('T-4: tailHasCodexSignature — pwsh 프롬프트로 끝나면 거짓', async () => {
+  const { tailHasCodexSignature } = await import('../src/pane.orca.mjs');
+  const tail = 'PS C:\\Users\\hdmun\\repo\\usage-coach>';
+  assert.equal(tailHasCodexSignature(tail), false);
+});
+
+test('T-4: tailHasCodexSignature — 서명도 프롬프트도 없으면 거짓', async () => {
+  const { tailHasCodexSignature } = await import('../src/pane.orca.mjs');
+  assert.equal(tailHasCodexSignature('아무 내용도 없음'), false);
 });
