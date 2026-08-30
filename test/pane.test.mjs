@@ -91,23 +91,26 @@ test('T-2: selectBackendName — darwin/linux는 tmux, win32는 orca', () => {
   assert.equal(selectBackendName('win32'), 'orca');
 });
 
-// T-3: pane.tmux.mjs가 git show HEAD:src/tmux.mjs와 바이트 동일 (git 없는 환경 skip)
+// T-3: pane.tmux.mjs가 리네임 *이전* src/tmux.mjs와 바이트 동일 (git 없는 환경 skip)
+// 리네임 커밋을 --diff-filter=R로 찾아 그 부모의 src/tmux.mjs와 비교한다 — 자기
+// 자신(HEAD:src/pane.tmux.mjs)과 비교하면 항상 참이라 아무것도 못 잡는다.
 test('T-3: pane.tmux.mjs 바이트 동일성 (git이 없으면 skip)', async (t) => {
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const { readFile } = await import('node:fs/promises');
   const { fileURLToPath } = await import('node:url');
   const run = promisify(execFile);
+  const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+  const git = (args) => run('git', args, { cwd: repoRoot, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
   let blob;
   try {
-    const { stdout } = await run('git', ['show', 'HEAD:src/pane.tmux.mjs'], {
-      cwd: fileURLToPath(new URL('..', import.meta.url)),
-      encoding: 'utf8',
-      maxBuffer: 10 * 1024 * 1024,
-    });
+    const { stdout: log } = await git(['log', '--follow', '-M100', '--diff-filter=R', '--format=%H', '--', 'src/pane.tmux.mjs']);
+    const renameCommit = log.trim().split('\n').filter(Boolean).pop();
+    if (!renameCommit) throw new Error('rename commit not found');
+    const { stdout } = await git(['show', `${renameCommit}^:src/tmux.mjs`]);
     blob = stdout;
   } catch {
-    t.skip('git show 실패 — git 없는 환경으로 간주');
+    t.skip('git log/show 실패 — git 없거나 리네임 이력 없는 환경으로 간주');
     return;
   }
   const disk = await readFile(fileURLToPath(new URL('../src/pane.tmux.mjs', import.meta.url)), 'utf8');

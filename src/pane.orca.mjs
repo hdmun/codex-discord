@@ -11,22 +11,34 @@ const ORCA_BIN = () => process.env.ORCA_CLI_COMMAND || 'orca';
 // 매 호출 재해석하지 않기 위한 캐시일 뿐 — 실패 시 1회 재해석 후 포기한다.
 const handleCache = new Map();
 
+// ok:false는 종료코드 0으로 돌아올 수 있으므로 여기서 예외로 승격한다 —
+// 호출부는 exception 경로 하나만 보면 된다(§5.3 "ok:false를 내면 재해석").
 async function orcaJson(args) {
   const { stdout } = await run(ORCA_BIN(), [...args, '--json'], { encoding: 'utf8' });
-  return JSON.parse(stdout);
+  const res = JSON.parse(stdout);
+  if (res?.ok === false) {
+    throw new Error(res.error ?? 'orca CLI: ok:false');
+  }
+  return res;
 }
 
 function paneName(pane) {
   return pane.split(':')[0];
 }
 
+// name → handle을 다시 조회해 캐시에 채운다. 최초 조회(resolveHandle의 캐시미스)와
+// stale handle 재시도(withHandle의 catch) 둘 다 이 한 곳을 거친다.
+async function refreshHandle(name) {
+  const handle = await lookupHandle(name);
+  handleCache.set(name, handle);
+  return handle;
+}
+
 async function resolveHandle(pane) {
   if (pane.startsWith('term_')) return pane;
   const name = paneName(pane);
   if (handleCache.has(name)) return handleCache.get(name);
-  const handle = await lookupHandle(name);
-  handleCache.set(name, handle);
-  return handle;
+  return refreshHandle(name);
 }
 
 async function lookupHandle(name) {
@@ -43,15 +55,13 @@ async function lookupHandle(name) {
 // 캐시된 handle이 죽었으면 1회만 재해석한다. 그래도 실패하면 던진다.
 async function withHandle(pane, fn) {
   const name = pane.startsWith('term_') ? null : paneName(pane);
-  let handle = await resolveHandle(pane);
+  const handle = await resolveHandle(pane);
   try {
     return await fn(handle);
   } catch (err) {
     if (name && isTerminalNotFound(err)) {
       handleCache.delete(name);
-      handle = await lookupHandle(name);
-      handleCache.set(name, handle);
-      return await fn(handle);
+      return fn(await refreshHandle(name));
     }
     throw err;
   }
@@ -86,7 +96,8 @@ async function readTail(pane) {
   return withHandle(pane, (handle) => orcaJson(['terminal', 'read', '--terminal', handle, '--limit', '200']));
 }
 
-// terminal show: list 항목과 같은 필드(§9) — connected/orphaned는 여기서만 나온다.
+// terminal show: list 항목과 같은 필드(§9). list/show 둘 다 connected/orphaned를
+// 갖지만(§5.4), 여기서는 이미 해석된 handle로 단건 조회하려고 show를 쓴다.
 async function showTerminal(handle) {
   return orcaJson(['terminal', 'show', '--terminal', handle]);
 }
