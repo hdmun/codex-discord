@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import spawn from 'cross-spawn';
 
 // `-s workspace-write`는 `resume` 서브커맨드 뒤에 두면 파싱 에러가 난다
 // (`codex exec resume --help`에 `-s, --sandbox` 옵션 없음, `--json`/`-c`만 공통).

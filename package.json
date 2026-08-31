@@ -2,7 +2,9 @@
   "name": "codex-discord",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node --env-file=.env src/index.mjs",
     "start:gemini": "node --env-file=.env.gemini src/index.mjs",
@@ -10,6 +12,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "cross-spawn": "^7.0.6",
     "discord.js": "^14.16.3"
   }
 }
