@@ -212,6 +212,30 @@ def orca_terminal_list(folder: Path) -> list:
     return data.get("result", {}).get("terminals", [])
 
 
+def find_terminal_by_tab_title(folder: Path, title: str):
+    """title(예: "codex-live")로 열린 터미널을 찾는다.
+
+    `terminal list`가 돌려주는 평평한 terminals[].title은 탭 이름이 아니라
+    그 안에서 돌아가는 프로세스가 자체로 세팅하는 동적 창 제목이다(예: pwsh가
+    금방 "discord-harness"로 덮어씀) — 2026-09-01 실측, tab.title로 찾아야
+    한다. --include-visual-layouts로만 tabs[].title(안정)이 나온다."""
+    rc, data = orca_json("terminal", "list", "--worktree", worktree_selector(folder),
+                          "--include-visual-layouts")
+    if rc != 0:
+        return None
+    result = data.get("result", {})
+    by_handle = {t["handle"]: t for t in result.get("terminals", [])}
+    for layout in result.get("visualLayouts", []):
+        for tab in layout.get("root", {}).get("tabs", []):
+            if tab.get("title") != title:
+                continue
+            panes = tab.get("panes", {})
+            handle = panes.get("handle") if panes.get("type") == "terminal" else None
+            if handle and handle in by_handle:
+                return by_handle[handle]
+    return None
+
+
 def orca_terminal_create(folder: Path, command: str, title: str):
     rc, data = orca_json("terminal", "create", "--worktree", worktree_selector(folder),
                          "--title", title, "--command", command)
@@ -373,8 +397,7 @@ def cmd_stop(argv: list) -> None:
     if not tui_on(env):
         return
     title = env.get("TUI_PANE", "codex-live:0.0").split(":")[0]
-    terms = orca_terminal_list(PROJECT_DIR)
-    existing = next((t for t in terms if t.get("title") == title), None)
+    existing = find_terminal_by_tab_title(PROJECT_DIR, title)
     if existing:
         orca_terminal_close(existing["handle"])
         log(f"TUI 터미널 종료: {title}")
@@ -395,10 +418,8 @@ def cmd_tui_up(argv: list) -> None:
     workdir = env["CODEX_WORKDIR"]
     ensure_runtime()
 
-    terms = orca_terminal_list(PROJECT_DIR)
-    existing = next((t for t in terms if t.get("title") == title and t.get("connected")
-                     and not t.get("orphaned")), None)
-    if existing:
+    existing = find_terminal_by_tab_title(PROJECT_DIR, title)
+    if existing and existing.get("connected") and not existing.get("orphaned"):
         term = orca_terminal_read(existing["handle"])
         if _looks_like_codex(term):
             log(f"codex 이미 실행 중 ({title}) — 종료")
@@ -531,8 +552,7 @@ def cmd_tui_restart(argv: list) -> None:
     title = pane.split(":")[0]
     log(f"=== {title} 재시작 시작 ({env_file}) ===")
     time.sleep(8)  # codex의 마지막 디스코드 답장(롤아웃 relay)이 나갈 시간
-    terms = orca_terminal_list(PROJECT_DIR)
-    existing = next((t for t in terms if t.get("title") == title), None)
+    existing = find_terminal_by_tab_title(PROJECT_DIR, title)
     if existing:
         orca_terminal_close(existing["handle"])
     try:

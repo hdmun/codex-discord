@@ -41,10 +41,31 @@ async function resolveHandle(pane) {
   return refreshHandle(name);
 }
 
+// tab.panes는 이 브리지가 쓰는 단일 터미널 탭에서는 {type:'terminal', handle, ...}
+// 하나뿐이다(분할 없음) — 방어적으로 그 형태만 인식한다.
+function tabTerminalHandle(panes) {
+  return panes?.type === 'terminal' ? panes.handle : null;
+}
+
 async function lookupHandle(name) {
-  const list = await orcaJson(['terminal', 'list']);
-  const terminals = list?.terminals ?? [];
-  const candidates = terminals.filter((t) => t.connected && !t.orphaned && t.title === name);
+  // terminal list의 최상위 응답은 {id, ok, result: {terminals, visualLayouts, ...}}
+  // — result를 거치지 않고 top-level에서 읽으면 항상 undefined라 후보가 늘
+  // 0개였다(2026-09-01 실측: 처음부터 릴레이가 한 번도 성공한 적이 없었음).
+  // terminals[].title은 탭 이름이 아니라 그 안 프로세스가 자체로 덮어쓰는
+  // 동적 창 제목이라(예: pwsh가 곧 title을 "discord-harness"로 바꿈) tab
+  // 이름으로 찾으려면 --include-visual-layouts의 tabs[].title을 봐야 한다.
+  const list = await orcaJson(['terminal', 'list', '--include-visual-layouts']);
+  const result = list?.result ?? {};
+  const byHandle = new Map((result.terminals ?? []).map((t) => [t.handle, t]));
+  const candidates = [];
+  for (const layout of result.visualLayouts ?? []) {
+    for (const tab of layout?.root?.tabs ?? []) {
+      if (tab.title !== name) continue;
+      const handle = tabTerminalHandle(tab.panes);
+      const flat = handle ? byHandle.get(handle) : null;
+      if (flat?.connected && !flat.orphaned) candidates.push(flat);
+    }
+  }
   if (candidates.length === 0) {
     throw new Error(`orca 터미널 '${name}'을 찾지 못함 — bridge_win.py tui-up 먼저 실행`);
   }
@@ -94,15 +115,20 @@ export async function pasteToPane(pane, text) {
   await withHandle(pane, (handle) => orcaJson(['terminal', 'send', '--terminal', handle, '--enter']));
 }
 
-// terminal read: {handle, status, tail[], truncated, limited, oldestCursor, nextCursor, latestCursor, returnedLineCount} (§9 실측)
+// terminal read 응답은 {id, ok, result: {terminal: {handle, status, tail[], ...}}}
+// — result.terminal까지 언랩해야 한다(§9 실측, 2026-09-01 정정: 예전엔 top-level에서
+// 읽어 항상 undefined였다).
 async function readTail(pane) {
-  return withHandle(pane, (handle) => orcaJson(['terminal', 'read', '--terminal', handle, '--limit', '200']));
+  const res = await withHandle(pane, (handle) => orcaJson(['terminal', 'read', '--terminal', handle, '--limit', '200']));
+  return res?.result?.terminal ?? {};
 }
 
 // terminal show: list 항목과 같은 필드(§9). list/show 둘 다 connected/orphaned를
 // 갖지만(§5.4), 여기서는 이미 해석된 handle로 단건 조회하려고 show를 쓴다.
+// 응답 구조는 read와 동형 — result.terminal까지 언랩.
 async function showTerminal(handle) {
-  return orcaJson(['terminal', 'show', '--terminal', handle]);
+  const res = await orcaJson(['terminal', 'show', '--terminal', handle]);
+  return res?.result?.terminal ?? {};
 }
 
 export async function capturePane(pane) {
