@@ -381,25 +381,53 @@ darwin에서 늘어나는 일은 두 가지다: `pane.mjs` 평가(상수 1개, �
 
 미확인 (구현 세션이 확인할 것):
 
-- **롤아웃 파일 생성** — 프로브 턴을 2초 만에 인터럽트해서 롤아웃이 안 생겼다.
-  `tui-up.sh` 주석대로 "첫 턴 **완료** 후 생성"이면 정상이지만 확인은 안 됐다.
-  Windows에서 완결된 더미 턴이 `~/.codex/sessions/**/rollout-*.jsonl`을 만들고 그
-  `payload.cwd`가 `.env`의 `CODEX_WORKDIR`와 **문자열로 정확히 일치**하는지(드라이브
-  문자 대소문자, 경로 구분자) B2-4에서 확인해야 한다. 여기서 어긋나면
-  `findRolloutByCwd` 폴백이 통째로 실패하고, Windows에는 UUID 화면 표시가 없으므로
-  대안 검출원이 없다.
+- ~~롤아웃 파일 생성~~ — 2026-09-01 확인 완료. 완결된 턴은 `rollout-*.jsonl`을
+  만들고 `payload.cwd`가 `CODEX_WORKDIR`와 문자열로 정확히 일치한다(드라이브
+  문자·구분자 문제 없음). 단, **경로는 `~/.codex/sessions`가 아닐 수 있다** —
+  이 개발 머신은 사용자 환경변수 `CODEX_HOME`이 Orca 자체 관리 홈
+  (`%APPDATA%\orca\codex-runtime-home\home`)으로 설정돼 있어 모든 codex
+  프로세스가 거기로 리다이렉트된다. `rollout.mjs`/`bridge_win.py` 둘 다
+  `~/.codex/sessions`를 하드코딩하고 있어 이 환경에서 롤아웃을 영원히 못 찾았다
+  (커밋 `db80d88`로 `CODEX_HOME` 우선, 미설정 시 `~/.codex` 폴백 수정 — macOS
+  `tui-up.sh`는 동형 하드코딩이 남아 있으나 이번 세션 범위 밖, 이월 후보).
 - codex가 죽고 pwsh 프롬프트만 남은 터미널의 tail 실물 — §5.4 신호 3의 픽스처.
-- **`pane.orca.mjs` 구현이 추정한 JSON 봉투 두 곳** (코드 리뷰 2026-08-30, orca 실물
-  없이 작성돼 검증 안 됨) — Phase 2 완료 조건(디스코드 응답)에서 재확인할 것:
-  - `terminal list` 최상위 키를 `{terminals: [...]}`로 가정. §9는 개별 터미널
-    항목의 필드만 실측했고, list 응답을 감싸는 봉투 키는 실측 기록에 없다.
-  - `terminal send` 응답의 `bytesWritten` 위치를 `result.send.bytesWritten`으로
-    가정(§5.1 문장을 따름). §9는 값(`bytesWritten: 62`)만 인용했고 감싸는 JSON
-    구조는 실측 기록에 없다.
-  - 둘 다 실제 orca 응답이 다르면 `pane.orca.mjs`의 `lookupHandle`/`pasteToPane`이
-    조용히 깨지지 않고 명시적으로 던지도록 짜여 있다(옵셔널 체이닝 뒤 length/개수
-    비교로 실패가 드러남) — 그래도 필드명 자체가 틀리면 최초 실기동에서 잡아야
-    한다.
+- **`pane.orca.mjs` 구현이 추정한 JSON 봉투** — 2026-09-01 세션 2c 실물 검증(디스코드
+  실채널 호명)에서 확인됨. 결론부터: **틀렸다** — `list.terminals`/`res.status`/
+  `res.tail`/`showRes.connected` 전부 top-level에서 읽고 있었는데, orca CLI의 모든
+  `--json` 응답은 `{id, ok, result: {...}}` 봉투라 실제 값은 `result` 밑에 있다.
+  `paneHasCodex`/`paneCurrentCommand`가 이 undefined를 catch로 삼켜 "unknown"으로
+  보고했다 — codex가 멀쩡히 떠 있어도 항상 그렇게 보였다. 유일하게
+  `pasteToPane`의 `res.result.send.bytesWritten`만 처음부터 맞았다(그래서 더미
+  턴 텍스트는 pane에 들어가는데 릴레이 판정만 늘 실패하는 것처럼 보였음).
+  **결과: Phase 2가 "완료"로 커밋된 뒤에도 이 릴레이는 한 번도 실제로 성공한 적이
+  없었다** — orca 실물 없이 짠 추정이 최초 실기동까지 전혀 안 잡혔다.
+
+  실측 확정 스키마:
+  - `terminal list` → `{id, ok, result: {terminals: [...], visualLayouts: [...],
+    totalCount, truncated}}`. 개별 터미널 항목의 필드는 기존 §9 기록대로.
+  - `terminal read`/`terminal show` → `{id, ok, result: {terminal: {handle,
+    status, tail: [...], connected, orphaned, ...}}}` — `result.terminal`까지
+    한 겹 더 파야 한다.
+  - `terminal send` → `{id, ok, result: {send: {handle, accepted, bytesWritten}}}`
+    (기존 가정 그대로 맞았음).
+
+  **추가로 발견한 2번째, 더 근본적인 문제**: `terminals[].title`은 탭 이름이
+  아니라 그 안에서 도는 프로세스가 자체로 세팅하는 동적 창 제목이다 — 예를 들어
+  `orca terminal create --title codex-live`로 만들어도 pwsh/codex가 뜨자마자
+  자기 제목("discord-harness" 등)으로 덮어써 버린다. `.env`의 `TUI_PANE` 콜론
+  앞부분("codex-live")으로 찾으려는 `lookupHandle`의 title 매칭은 그래서 구조적으로
+  항상 실패한다 — 최상위 봉투 버그를 고쳐도 이 문제가 남는다. 안정적인 탭 이름은
+  `terminal list --include-visual-layouts`가 주는 `result.visualLayouts[].root.
+  tabs[].title`에만 있다(개별 터미널 객체엔 없음). `bridge_win.py`의 tui-up/
+  tui-restart/stop 세 곳도 동일한 title 오매칭으로 "existing" 터미널을 못 찾아
+  매번 새 탭을 만들고 있었다(좀비 터미널 누적의 원인).
+
+  수정: `pane.orca.mjs`(`lookupHandle`이 `--include-visual-layouts`로 tab.title
+  매칭 후 result.terminals에서 핸들 교차 조회, `readTail`/`showTerminal`이
+  `result.terminal`까지 언랩) + `bridge_win.py`(`find_terminal_by_tab_title` 헬퍼
+  신설, 3개 호출부 교체) — 커밋 `db80d88`~`445e5e1`(codex-discord). 수정 후
+  `node --input-type=module`로 `paneHasCodex` 직접 호출해 `true` 확인, 디스코드
+  실채널 호명 → "안녕하세요! 👋" 실응답 + daemon.log `TUI tail 연결` 확인.
 
 ## 10. 구현 순서 (다음 세션)
 
