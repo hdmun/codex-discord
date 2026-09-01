@@ -437,7 +437,10 @@ def cmd_tui_up(argv: list) -> None:
     log("더미 턴 전송")
 
     # 롤아웃 파일 대기 — 문자열 grep 금지, json.loads 후 payload.cwd 비교(함정 2 회피)
-    sessions_root = Path.home() / ".codex" / "sessions"
+    # CODEX_HOME이 설정돼 있으면 그쪽 우선(Orca가 codex 프로세스를 자체 관리 홈으로
+    # 리다이렉트하는 사례 실측 — 2026-09-01, 하드코딩 시 롤아웃을 영원히 못 찾음)
+    codex_home = os.environ.get("CODEX_HOME")
+    sessions_root = Path(codex_home) / "sessions" if codex_home else Path.home() / ".codex" / "sessions"
     stamp = time.time()
     found = None
     for i in range(180):

@@ -2,7 +2,10 @@ import { stat, open, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 
-const SESSIONS_ROOT = join(homedir(), '.codex', 'sessions');
+// CODEX_HOME이 설정돼 있으면 그쪽을 우선한다(Orca가 codex 프로세스에
+// 자체 관리 홈으로 리다이렉트하는 사례 실측 — 2026-09-01, 하드코딩 시
+// 롤아웃을 영원히 못 찾아 릴레이가 조용히 무증상 소실됨).
+const SESSIONS_ROOT = join(process.env.CODEX_HOME || join(homedir(), '.codex'), 'sessions');
 
 async function listSorted(dir) {
   return (await readdir(dir)).sort().reverse(); // 최근(큰 값) 우선
