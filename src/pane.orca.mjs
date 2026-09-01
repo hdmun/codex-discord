@@ -48,7 +48,10 @@ async function lookupHandle(name) {
   if (candidates.length === 0) {
     throw new Error(`orca 터미널 '${name}'을 찾지 못함 — bridge_win.py tui-up 먼저 실행`);
   }
-  candidates.sort((a, b) => (b.lastOutputAt ?? '').localeCompare(a.lastOutputAt ?? ''));
+  // lastOutputAt은 숫자(epoch ms) — 문자열 비교(localeCompare)를 쓰면 동일 제목
+  // 후보가 2개 이상일 때 항상 TypeError로 터진다(2026-09-01 실측: 좀비 터미널
+  // 누적으로 재현, 응답이 조용히 소실되는 것처럼 보였음)
+  candidates.sort((a, b) => (b.lastOutputAt ?? 0) - (a.lastOutputAt ?? 0));
   return candidates[0].handle;
 }
 
