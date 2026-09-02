@@ -97,7 +97,7 @@ for i in $(seq 1 180); do
     if head -1 "$f" 2>/dev/null | grep -qF "\"cwd\":\"$CODEX_WORKDIR\""; then
       FILE="$f"; break
     fi
-  done < <(find "$HOME/.codex/sessions" -name 'rollout-*.jsonl' -type f -newer "$STAMP" 2>/dev/null)
+  done < <(find "${CODEX_HOME:-$HOME/.codex}/sessions" -name 'rollout-*.jsonl' -type f -newer "$STAMP" 2>/dev/null)
   if [[ -n "$FILE" ]]; then
     SID=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' <<<"$FILE" | tail -1 || true)
     log "codex 세션 감지(롤아웃): ${SID:-확인불가} — $FILE"
